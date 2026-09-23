@@ -37,7 +37,7 @@ from rich.console import Console
 
 from hedge_fund.backtesting import backtest_fund
 from hedge_fund.brokers import SimBroker
-from hedge_fund.data import CachedDataClient, FDClient
+from hedge_fund.data import CachedDataClient, FDClient, JQuantsPriceClient
 from hedge_fund.fund import Fund, load_spec, normalize_universe
 from hedge_fund.paths import ensure_mandates_dir
 from hedge_fund.pipeline import run_cycle
@@ -87,6 +87,11 @@ def main() -> None:
         "ignore it",
     )
     parser.add_argument("--out", help="also write the record JSON to this file")
+    parser.add_argument(
+        "--data-provider", choices=("financial-datasets", "jquants"),
+        default="financial-datasets",
+        help="jquants is a price-only Japan pilot and supports momentum models only",
+    )
     args = parser.parse_args()
 
     if args.model:
@@ -106,14 +111,33 @@ def main() -> None:
 
     console = Console(stderr=True)  # status + summary on stderr; stdout stays pure JSON
     spec = load_spec(args.mandate)
+    if args.data_provider == "jquants":
+        if spec.lot_size != 100:
+            parser.error("J-Quants pilot mandates require lot_size: 100")
+        if any(m.name != "momentum" for s in spec.strategies for m in s.models):
+            parser.error("J-Quants pilot currently supports only momentum models")
+        try:
+            for ticker in [*universe, spec.benchmark]:
+                JQuantsPriceClient._code(ticker)
+        except ValueError as exc:
+            parser.error(str(exc))
     fund = Fund(spec)
 
     if args.backtest:
         start = args.start or (
             _date.fromisoformat(args.date) - timedelta(weeks=_BACKTEST_WEEKS)
         ).isoformat()
-        with FDClient() as raw:
-            fd = CachedDataClient(raw)
+        with (JQuantsPriceClient() if args.data_provider == "jquants" else FDClient()) as raw:
+            if args.data_provider == "jquants":
+                # One range per ticker, including the momentum lookback.
+                prefetch_start = (
+                    _date.fromisoformat(start) - timedelta(days=90)
+                ).isoformat()
+                for ticker in sorted(set(universe) | {spec.benchmark}):
+                    raw.preload_prices(ticker, prefetch_start, args.date)
+                fd = raw
+            else:
+                fd = CachedDataClient(raw)
             with console.status(
                 f"[cyan]{spec.name}: backtesting {start} → {args.date} "
                 f"({spec.rebalance} rebalance vs {spec.benchmark}) "
@@ -133,10 +157,10 @@ def main() -> None:
         )
         return
 
-    broker = SimBroker(cash=spec.capital)
+    broker = SimBroker(cash=spec.capital, lot_size=spec.lot_size)
 
-    with FDClient() as raw:
-        fd = CachedDataClient(raw)
+    with (JQuantsPriceClient() if args.data_provider == "jquants" else FDClient()) as raw:
+        fd = raw if args.data_provider == "jquants" else CachedDataClient(raw)
         n_models = sum(len(staff) for _, staff in fund.strategies)
         with console.status(
             f"[cyan]{spec.name}: running one cycle as of {args.date} — "

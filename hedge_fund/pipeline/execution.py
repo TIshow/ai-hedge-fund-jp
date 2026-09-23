@@ -18,11 +18,12 @@ def build_orders(
     positions: dict[str, Position],
     marks: dict[str, float],
     equity: float,
+    lot_size: int = 1,
 ) -> list[Order]:
     """Diff the target book against the broker's current book.
 
-    Sizing: target_shares = int(weight * equity / mark) — floor toward zero,
-    never overshoot the target; sub-share dust stays in cash and is
+    Sizing: floor the signed target toward zero to a whole lot,
+    never overshoot the target; unallocated cash stays in the book and is
     re-evaluated next cycle. Orders below one share are not emitted.
 
     Ordering: all sells first, then buys, alphabetical within each group —
@@ -32,13 +33,18 @@ def build_orders(
     A KeyError on marks here means a pipeline bug upstream (run_cycle prices
     every tradeable and held name before calling this) — let it raise.
     """
+    if lot_size < 1:
+        raise ValueError("lot_size must be positive")
     sells: list[Order] = []
     buys: list[Order] = []
 
     for ticker in sorted(set(target_weights) | set(positions)):
         mark = marks[ticker]
-        target_shares = int(target_weights.get(ticker, 0.0) * equity / mark)
+        target_lots = int(target_weights.get(ticker, 0.0) * equity / mark / lot_size)
+        target_shares = target_lots * lot_size
         current_shares = positions[ticker].shares if ticker in positions else 0
+        if current_shares % lot_size:
+            raise ValueError(f"held position {ticker} violates {lot_size}-share lots")
         delta = target_shares - current_shares
         if delta == 0:
             continue

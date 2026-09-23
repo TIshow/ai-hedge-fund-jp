@@ -19,8 +19,11 @@ from hedge_fund.brokers.models import Fill, Order, Position
 class SimBroker:
     """In-memory broker: signed positions plus a cash balance."""
 
-    def __init__(self, cash: float) -> None:
+    def __init__(self, cash: float, lot_size: int = 1) -> None:
+        if lot_size < 1:
+            raise ValueError("lot_size must be positive")
         self._cash = cash
+        self._lot_size = lot_size
         self._shares: dict[str, int] = {}
 
     def positions(self) -> dict[str, Position]:
@@ -34,6 +37,10 @@ class SimBroker:
         return self._cash
 
     def place_order(self, order: Order) -> Fill:
+        if order.quantity % self._lot_size:
+            raise ValueError(
+                f"{order.ticker} order must be a multiple of {self._lot_size} shares"
+            )
         if order.price <= 0:
             raise ValueError(
                 f"cannot fill {order.ticker} at price {order.price} — "

@@ -48,3 +48,11 @@ def test_positions_returns_a_copy():
     broker.place_order(Order(ticker="AAPL", side="buy", quantity=5, price=100.0))
     broker.positions().clear()
     assert broker.positions()["AAPL"].shares == 5
+
+
+def test_japan_lot_broker_rejects_odd_lots():
+    broker = SimBroker(cash=1_000_000, lot_size=100)
+    with pytest.raises(ValueError, match="multiple of 100 shares"):
+        broker.place_order(Order(ticker="7203", side="buy", quantity=99, price=1_000))
+    broker.place_order(Order(ticker="7203", side="buy", quantity=100, price=1_000))
+    assert broker.positions()["7203"].shares == 100

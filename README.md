@@ -45,6 +45,10 @@ Keys exported in your shell always win over the saved file.
 
 ## How to Run
 
+### Japanese equities pilot
+
+See [JAPAN_PILOT.md](JAPAN_PILOT.md) for a price-only J-Quants V2 historical backtest with 100-share simulated orders. This requires the local source checkout and a J-Quants API key; the published package may not include these changes.
+
 ### Interactive app
 
 ```bash

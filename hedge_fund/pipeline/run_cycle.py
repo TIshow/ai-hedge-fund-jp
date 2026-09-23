@@ -107,7 +107,7 @@ def run_cycle(
 
     risk = apply_limits(netted, spec.risk)
 
-    orders = build_orders(risk.weights, held, marks, equity_before)
+    orders = build_orders(risk.weights, held, marks, equity_before, spec.lot_size)
     fills: list[Fill] = [broker.place_order(o) for o in orders]
 
     positions_after = {t: p.shares for t, p in broker.positions().items()}
@@ -157,7 +157,12 @@ def _mark_prices(
     for ticker in tickers:
         prices = data_client.get_prices(ticker, start, as_of)
         bars = [p for p in prices if p.time[:10] <= as_of]
-        if bars:
+        # A provider that requires a current bar must not simulate an order
+        # at a stale close when a security did not trade on the grid date.
+        if bars and (
+            not getattr(data_client, "require_current_bar", False)
+            or any(p.time[:10] == as_of for p in bars)
+        ):
             marks[ticker] = max(bars, key=lambda p: p.time).close
         elif ticker in held:
             raise ValueError(

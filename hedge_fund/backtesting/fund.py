@@ -99,7 +99,7 @@ def backtest_fund(
         )
     grid = rebalance_grid(sorted(closes), spec.rebalance)
 
-    broker = SimBroker(cash=spec.capital)
+    broker = SimBroker(cash=spec.capital, lot_size=spec.lot_size)
     records: list[CycleRecord] = []
     nav: list[float] = []
     benchmark_nav: list[float] = []
