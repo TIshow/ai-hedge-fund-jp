@@ -54,3 +54,35 @@ def test_halted_held_stock_cannot_be_filled_at_prior_close():
     with pytest.raises(ValueError, match="cannot value the book"):
         backtest_fund(Fund(load_spec("japan-pilot.yaml")), first_week,
                       second_week, DailyBars(series), ["7203"])
+
+
+class SplittingBars(DailyBars):
+    """Prices halve on a 2-for-1 ex-date; the provider reports the split."""
+
+    def __init__(self, prices, splits):
+        super().__init__(prices)
+        self.splits = splits
+
+    def share_splits(self, ticker, after, through):
+        return [(d, r) for t, d, r in self.splits if t == ticker and after < d <= through]
+
+
+def test_forward_split_doubles_held_shares_and_keeps_nav_continuous(monkeypatch):
+    # An always-long view isolates the split; momentum itself would read the
+    # unadjusted halving as a loss, which is why the CLI keeps it split-free.
+    from hedge_fund.models import Signal
+    monkeypatch.setattr(
+        "hedge_fund.signals.momentum.MomentumModel.predict",
+        lambda self, ticker, date, data: Signal(model_name="momentum", ticker=ticker,
+                                                date=date, value=1.0, reasoning="long"))
+    days, series = prices()
+    ex_date = "2025-02-10"
+    series["7203"] = {d: (c / 2 if d >= ex_date else c) for d, c in series["7203"].items()}
+    data = SplittingBars(series, [("7203", ex_date, 2.0)])
+    result = backtest_fund(Fund(load_spec("japan-pilot.yaml")), "2025-02-03", "2025-02-14",
+                           data, ["7203"])
+    before, after = result.records[0], result.records[1]
+    held = before.positions["7203"]
+    assert held > 0 and after.positions["7203"] == 2 * held
+    # Without the split the book would lose half the position's value.
+    assert after.nav > before.nav * 0.9
