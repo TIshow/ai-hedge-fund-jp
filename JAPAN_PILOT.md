@@ -158,6 +158,74 @@ HEDGE_FUND_HOME=.hedge-fund .venv/bin/aihf japan-buffett-10.yaml --data-provider
 - 仮説と逆の結果、差がない結果も同じように報告します。
 - 収益率は判断の良し悪しの評価に使いません（期間が短く、空売りの費用などが入っていないため）。
 
+### 30銘柄の比較の実行手順
+
+結果は`outputs/`、AIへの入力と回答は`.hedge-fund/`に保存されます（どちらもGitの管理対象外）。J-Quantsの回数制限（無料プランは1分5回）はキー単位なので、J-Quantsを使う手順は同時に実行しないでください。
+
+1. 銘柄を選びます。約15分かかります。選ばれた銘柄の一覧は標準出力に出るので、ファイルに保存しておきます。
+
+```bash
+.venv/bin/python japan_universe.py --as-of 2026-02-16 --end 2026-06-26 \
+  --per-tier 10 --seed 20260209 --out outputs/japan-universe-2026-02-16.json \
+  > outputs/japan-universe-2026-02-16.tickers
+```
+
+2. AIがそれぞれの会社について知っていることを聞きます（1社1回、J-Quantsは使いません）。途中で止まっても、再実行すれば済んだ会社を飛ばします。
+
+```bash
+HEDGE_FUND_HOME=.hedge-fund .venv/bin/python japan_knowledge_probe.py \
+  outputs/japan-universe-2026-02-16.json outputs/japan-universe-knowledge.json
+```
+
+3. 会社名あり・会社名なしのバックテストを順に実行します。それぞれデータの取得に約25分かかります。AIの回答は保存されるので、同じ条件で再実行すればAIの料金はかかりません。
+
+```bash
+HEDGE_FUND_HOME=.hedge-fund .venv/bin/aihf japan-30.yaml --data-provider jquants \
+  --tickers "$(cat outputs/japan-universe-2026-02-16.tickers)" --backtest \
+  --start 2026-02-16 --date 2026-06-26 --out outputs/japan-30-named.json
+```
+
+```bash
+HEDGE_FUND_HOME=.hedge-fund .venv/bin/aihf japan-30-anon.yaml --data-provider jquants \
+  --tickers "$(cat outputs/japan-universe-2026-02-16.tickers)" --backtest \
+  --start 2026-02-16 --date 2026-06-26 --out outputs/japan-30-anon.json
+```
+
+4. 同じ資料に対する判断を組にして、判断役・規模の層ごとに集計します。集計の詳細は`outputs/japan-30-named-compare.json`にも保存されます。
+
+```bash
+.venv/bin/python japan_compare.py outputs/japan-30-named.json outputs/japan-30-anon.json \
+  outputs/japan-universe-2026-02-16.json outputs/japan-universe-knowledge.json
+```
+
+### 結果の画像・GIF・端末リプレイ
+
+どちらのスクリプトも保存済みの結果だけを読み、APIは呼びません（何度実行しても費用はかかりません）。社名は規模別の記号（Core30-1、Mid400-7など）で伏せ、予備的な結果であること、投資助言ではないこと、データとAIの出典を表示します。
+
+`japan_media.py`は、`outputs/media/`にPNG 4枚（中立の割合、判断の入れ替わり、実験の仕組み、同じ数字から違う結論になった例）と、毎週の判断のGIFを作ります。いずれも1600×900です。表示にはmacOSのヒラギノ角ゴシックを使います。
+
+```bash
+.venv/bin/python japan_media.py outputs/japan-30-named.json outputs/japan-30-anon.json \
+  outputs/japan-universe-2026-02-16.json outputs/media
+```
+
+`japan_replay.py`は、会社名あり・会社名なしの2つのファンドを端末に左右に並べ、週ごとに再生します（資産の推移と1306の比較、買い・空売り、大きい持ち高、その週の注文、AIの判断が変わった銘柄）。通常の速度で約65秒です。
+
+- 画面録画では、ターミナル（またはiTerm2）のウィンドウを横170文字×縦50行以上にします。今の大きさは`stty size`で確認できます（行数、列数の順）。
+- ⌘⇧5で画面収録を開始してから、下のコマンドを実行します。最後の週のあと4秒で自動終了し、途中でやめるときはCtrl+Cです。
+- `--speed 1.5`で1.5倍速、`--speed 0.7`でゆっくり再生します。`--final`を付けると、アニメーションなしで最後の週だけを表示します（スクリーンショット用）。
+
+```bash
+.venv/bin/python japan_replay.py outputs/japan-30-named.json outputs/japan-30-anon.json \
+  outputs/japan-universe-2026-02-16.json
+```
+
+公開する前の注意:
+
+- 資産の推移や注文の金額はJ-Quantsの株価から計算しています。公開してよいか、J-Quantsの利用条件を確認してください。
+- 両ファンドとも1306に負けており、空売りが中心です。会社名なしのほうが負けが小さいのは、期間が短く偶然の範囲です。空売りの費用や手数料も入っていません。
+- 注文の多くは、判断が変わったためではなく、株価が100株の境目をまたいだことによる機械的な調整です。
+
 ## 検証結果を読むとき
 
 - **空売り**: 元のプログラムの設計どおり、弱気の判断は空売りになります（LLMエージェントの場合。momentumは空売りを出しません）。シミュレーションの空売りには、制度信用で売れる貸借銘柄の制限、貸株料・逆日歩、委託保証金が反映されません。空売りで受け取った代金も制約なく現金として扱われるため、実際より有利です。空売りをしない検証にするには、設定の`risk`に`long_only: true`を加えます。
