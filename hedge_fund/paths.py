@@ -11,10 +11,13 @@ anchors its paths here, and nothing here may import them back.
 
 from __future__ import annotations
 
+import os
 import shutil
 from pathlib import Path
 
-USER_DIR = Path.home() / ".hedge-fund"
+# HEDGE_FUND_HOME relocates all of it (e.g. into a gitignored folder of a
+# checkout). It must be set in the shell: .env files are read after import.
+USER_DIR = Path(os.environ.get("HEDGE_FUND_HOME") or Path.home() / ".hedge-fund").expanduser().resolve()
 MANDATES_DIR = USER_DIR / "mandates"
 CACHE_DIR = USER_DIR / "cache"
 ENV_PATH = USER_DIR / ".env"
