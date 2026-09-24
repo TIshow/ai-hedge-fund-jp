@@ -240,3 +240,20 @@ def test_extract_json_embedded():
 def test_extract_json_raises_on_garbage():
     with pytest.raises(LLMParseError):
         extract_json("no json here at all")
+
+
+def test_short_then_full_answer_keeps_the_reasoning(tmp_path):
+    response = ('{"signal": "neutral", "confidence": 45}\n'
+                '{"signal":"neutral","confidence":45,"reasoning":"Fair {price}."}')
+    agent = BuffettAgent(llm=FakeLLM(response), cache=PromptCache(tmp_path))
+    signal = agent.predict("TEST", "2025-01-15", MockDataClient(metrics=_history()))
+    assert signal.reasoning == "Fair {price}."
+    assert signal.value == 0.0 and not signal.metadata["abstained"]
+
+
+def test_conflicting_answers_abstain(tmp_path):
+    response = ('{"signal": "bullish", "confidence": 80}\n'
+                '{"signal":"bearish","confidence":60,"reasoning":"r"}')
+    agent = BuffettAgent(llm=FakeLLM(response), cache=PromptCache(tmp_path))
+    signal = agent.predict("TEST", "2025-01-15", MockDataClient(metrics=_history()))
+    assert signal.value == 0.0 and "parse failed" in signal.reasoning

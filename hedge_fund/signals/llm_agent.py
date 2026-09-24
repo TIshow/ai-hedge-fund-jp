@@ -22,6 +22,7 @@ Failure contract (locked decisions):
 
 from __future__ import annotations
 
+import json
 import logging
 
 from hedge_fund.data.protocol import DataClient
@@ -43,9 +44,13 @@ class LLMAgent(AlphaModel):
         self,
         llm: LLMClient | None = None,
         cache: PromptCache | None = None,
+        anonymize: bool = False,
     ) -> None:
         self._llm = llm if llm is not None else make_llm()
         self._cache = cache if cache is not None else PromptCache()
+        # Mandate param (`params: {anonymize: true}`): withhold identity and
+        # dates from the prompt to limit lookahead from the model's memory.
+        self._anonymize = anonymize
 
     # ------------------------------------------------------------------
     # AlphaModel interface
@@ -122,7 +127,7 @@ class LLMAgent(AlphaModel):
 
     def build_user_prompt(self, snapshot: FundamentalsSnapshot) -> str:
         """Default user prompt: the rendered snapshot. Override to enrich."""
-        return snapshot.render()
+        return snapshot.render_anonymized() if self._anonymize else snapshot.render()
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -131,6 +136,8 @@ class LLMAgent(AlphaModel):
     def _parse(self, response: str) -> dict:
         """Extract + validate {signal, confidence, reasoning}."""
         data = extract_json(response)
+        if "reasoning" not in data:
+            data = _complete_answer(response, data)
         signal = str(data.get("signal", "")).lower()
         if signal not in _SIGNAL_TO_SIGN:
             raise ValueError(f"invalid signal {data.get('signal')!r}")
@@ -172,6 +179,8 @@ class LLMAgent(AlphaModel):
                 "snapshot_hash": snapshot.content_hash,
                 "cached": cached,
                 "abstained": False,
+                # Only when on, so the default metadata shape stays upstream's.
+                **({"anonymized": True} if self._anonymize else {}),
                 **({"provider_metadata": parsed["provider_metadata"]}
                    if "provider_metadata" in parsed else {}),
             },
@@ -186,3 +195,34 @@ class LLMAgent(AlphaModel):
             reasoning=f"abstained: {reason}",
             metadata={"abstained": True, "abstain_reason": reason, "cached": False},
         )
+
+
+def _json_objects(text: str) -> list[dict]:
+    """Every top-level JSON object in *text*, in order."""
+    decoder = json.JSONDecoder()
+    objects: list[dict] = []
+    i = text.find("{")
+    while i != -1:
+        try:
+            obj, end = decoder.raw_decode(text, i)
+        except json.JSONDecodeError:
+            i = text.find("{", i + 1)
+            continue
+        if isinstance(obj, dict):
+            objects.append(obj)
+        i = text.find("{", end)
+    return objects
+
+
+def _complete_answer(response: str, first: dict) -> dict:
+    """A model sometimes emits a short answer, then the full one. Use the
+    full one only when every answer agrees on signal and confidence;
+    conflicting answers are a parse failure, never a silent pick."""
+    answers = [o for o in _json_objects(response) if "signal" in o]
+    complete = [o for o in answers if "reasoning" in o]
+    if not complete:
+        return first
+    views = {(str(o.get("signal", "")).lower(), str(o.get("confidence"))) for o in answers}
+    if len(views) > 1:
+        raise ValueError(f"conflicting JSON answers in response: {sorted(views)}")
+    return complete[-1]
