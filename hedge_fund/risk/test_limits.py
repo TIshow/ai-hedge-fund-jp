@@ -60,3 +60,13 @@ def test_clamped_exposure_not_redistributed():
     result = apply_limits({"AAPL": 0.9, "MSFT": 0.05}, LIMITS)
     assert result.weights["AAPL"] == pytest.approx(0.25)
     assert result.weights["MSFT"] == pytest.approx(0.05)  # NOT topped up
+
+
+def test_long_only_turns_shorts_into_cash():
+    limits = RiskLimits(max_position_pct=0.5, max_gross_exposure=1.0, long_only=True)
+    result = apply_limits({"7203": 0.4, "6758": -0.6}, limits)
+    assert result.weights == {"6758": 0.0, "7203": 0.4}
+    assert [(c.limit, c.ticker, c.after) for c in result.clamps] == [("long_only", "6758", 0.0)]
+    # Default keeps upstream behaviour: shorts are allowed.
+    assert apply_limits({"6758": -0.6}, RiskLimits(max_position_pct=0.5,
+                        max_gross_exposure=1.0)).weights == {"6758": -0.5}
