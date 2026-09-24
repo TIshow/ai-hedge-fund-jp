@@ -112,6 +112,10 @@ class FundSpec(BaseModel):
     strategies: list[StrategySpec] = Field(min_length=1)
     risk: RiskLimits
     capital: float = Field(default=100_000.0, gt=0)
+    lot_size: int = Field(
+        default=1, ge=1,
+        description="shares per simulated order unit (100 for domestic TSE shares)",
+    )
     rebalance: Literal["daily", "weekly", "monthly"] = Field(
         default="weekly",
         description="how often the fund re-runs its cycle — a mandate choice, "

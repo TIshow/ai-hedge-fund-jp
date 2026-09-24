@@ -99,12 +99,19 @@ def backtest_fund(
         )
     grid = rebalance_grid(sorted(closes), spec.rebalance)
 
-    broker = SimBroker(cash=spec.capital)
+    broker = SimBroker(cash=spec.capital, lot_size=spec.lot_size)
     records: list[CycleRecord] = []
     nav: list[float] = []
     benchmark_nav: list[float] = []
     base_close = closes[grid[0]]
+    # Providers with unadjusted prices may report forward splits; held shares
+    # are multiplied on the ex-date so marks and positions stay consistent.
+    share_splits = getattr(data_client, "share_splits", None)
     for i, as_of in enumerate(grid):
+        if share_splits is not None and i > 0:
+            for ticker in sorted(broker.positions()):
+                for _day, ratio in share_splits(ticker, grid[i - 1], as_of):
+                    broker.apply_split(ticker, ratio)
         record = run_cycle(fund, as_of, broker, data_client, universe)
         records.append(record)
         nav.append(record.nav)

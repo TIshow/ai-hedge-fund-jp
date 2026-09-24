@@ -22,6 +22,7 @@ wheels/
 
 # Virtual Environment
 venv/
+.venv/
 ENV/
 
 # Environment Variables
@@ -58,6 +59,8 @@ outputs/
 # sessions running pre-2.1 code may still write here)
 /mandates/
 .hedge_fund_cache/
+# Local HEDGE_FUND_HOME for this checkout (LLM prompts/responses, data caches)
+/.hedge-fund/
 
 # Local-only release tooling
 scripts/release.sh

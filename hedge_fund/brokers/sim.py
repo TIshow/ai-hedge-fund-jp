@@ -19,8 +19,11 @@ from hedge_fund.brokers.models import Fill, Order, Position
 class SimBroker:
     """In-memory broker: signed positions plus a cash balance."""
 
-    def __init__(self, cash: float) -> None:
+    def __init__(self, cash: float, lot_size: int = 1) -> None:
+        if lot_size < 1:
+            raise ValueError("lot_size must be positive")
         self._cash = cash
+        self._lot_size = lot_size
         self._shares: dict[str, int] = {}
 
     def positions(self) -> dict[str, Position]:
@@ -33,7 +36,30 @@ class SimBroker:
     def cash(self) -> float:
         return self._cash
 
+    def apply_split(self, ticker: str, ratio: float) -> int:
+        """Multiply a held position by a split *ratio* (new shares per old
+        share); cash is unchanged. Returns the new signed share count.
+
+        Raises when the result is not a whole number of lots (a 3-for-2
+        split of 100 shares, or a consolidation) — odd lots are not modelled.
+        """
+        shares = self._shares.get(ticker, 0)
+        if shares == 0:
+            return 0
+        new = shares * ratio
+        if abs(new - round(new)) > 1e-9 or round(new) % self._lot_size:
+            raise ValueError(
+                f"{ticker}: a {ratio:g}-for-1 split turns {shares} shares into "
+                f"{new:g}, not whole {self._lot_size}-share lots"
+            )
+        self._shares[ticker] = int(round(new))
+        return self._shares[ticker]
+
     def place_order(self, order: Order) -> Fill:
+        if order.quantity % self._lot_size:
+            raise ValueError(
+                f"{order.ticker} order must be a multiple of {self._lot_size} shares"
+            )
         if order.price <= 0:
             raise ValueError(
                 f"cannot fill {order.ticker} at price {order.price} — "

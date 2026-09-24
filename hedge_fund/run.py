@@ -37,7 +37,7 @@ from rich.console import Console
 
 from hedge_fund.backtesting import backtest_fund
 from hedge_fund.brokers import SimBroker
-from hedge_fund.data import CachedDataClient, FDClient
+from hedge_fund.data import CachedDataClient, FDClient, JQuantsPriceClient
 from hedge_fund.fund import Fund, load_spec, normalize_universe
 from hedge_fund.paths import ensure_mandates_dir
 from hedge_fund.pipeline import run_cycle
@@ -87,6 +87,12 @@ def main() -> None:
         "ignore it",
     )
     parser.add_argument("--out", help="also write the record JSON to this file")
+    parser.add_argument(
+        "--data-provider", choices=("financial-datasets", "jquants"),
+        default="financial-datasets",
+        help="jquants is a Japan pilot: daily prices plus 決算短信 summaries; "
+        "supports momentum and the LLM investor agents, not PEAD",
+    )
     args = parser.parse_args()
 
     if args.model:
@@ -106,14 +112,57 @@ def main() -> None:
 
     console = Console(stderr=True)  # status + summary on stderr; stdout stays pure JSON
     spec = load_spec(args.mandate)
+    if args.data_provider == "jquants":
+        if spec.lot_size != 100:
+            parser.error("J-Quants pilot mandates require lot_size: 100")
+        from hedge_fund.signals import ALPHA_MODEL_REGISTRY, LLMAgent
+
+        # PEAD needs analyst-consensus surprises, which J-Quants does not have.
+        unsupported = sorted({
+            m.name for s in spec.strategies for m in s.models
+            if m.name != "momentum" and not (
+                m.name in ALPHA_MODEL_REGISTRY
+                and issubclass(ALPHA_MODEL_REGISTRY[m.name], LLMAgent)
+            )
+        })
+        if unsupported:
+            parser.error(
+                "J-Quants pilot supports momentum and LLM investor agents only; "
+                f"unsupported: {', '.join(unsupported)}"
+            )
+        try:
+            for ticker in [*universe, spec.benchmark]:
+                JQuantsPriceClient._code(ticker)
+        except ValueError as exc:
+            parser.error(str(exc))
     fund = Fund(spec)
 
     if args.backtest:
         start = args.start or (
             _date.fromisoformat(args.date) - timedelta(weeks=_BACKTEST_WEEKS)
         ).isoformat()
-        with FDClient() as raw:
-            fd = CachedDataClient(raw)
+        # Momentum compares unadjusted closes across its lookback, so a split
+        # there must stop the run; other models only need marks, so held
+        # shares follow forward splits and prices load from just before start.
+        uses_momentum = any(m.name == "momentum" for s in spec.strategies for m in s.models)
+        with (JQuantsPriceClient(adjust_splits=not uses_momentum)
+              if args.data_provider == "jquants" else FDClient()) as raw:
+            if args.data_provider == "jquants":
+                prefetch_start = (
+                    _date.fromisoformat(start) - timedelta(days=90 if uses_momentum else 7)
+                ).isoformat()
+                # The benchmark is only a comparison series, so a split there
+                # uses adjusted prices; traded names stay unadjusted and strict.
+                traded = {JQuantsPriceClient._code(t) for t in universe}
+                benchmark = JQuantsPriceClient._code(spec.benchmark)
+                for code in sorted(traded | {benchmark}):
+                    raw.preload_prices(
+                        code, prefetch_start, args.date,
+                        adjusted=code == benchmark and code not in traded,
+                    )
+                fd = raw
+            else:
+                fd = CachedDataClient(raw)
             with console.status(
                 f"[cyan]{spec.name}: backtesting {start} → {args.date} "
                 f"({spec.rebalance} rebalance vs {spec.benchmark}) "
@@ -133,10 +182,10 @@ def main() -> None:
         )
         return
 
-    broker = SimBroker(cash=spec.capital)
+    broker = SimBroker(cash=spec.capital, lot_size=spec.lot_size)
 
-    with FDClient() as raw:
-        fd = CachedDataClient(raw)
+    with (JQuantsPriceClient() if args.data_provider == "jquants" else FDClient()) as raw:
+        fd = raw if args.data_provider == "jquants" else CachedDataClient(raw)
         n_models = sum(len(staff) for _, staff in fund.strategies)
         with console.status(
             f"[cyan]{spec.name}: running one cycle as of {args.date} — "

@@ -1,0 +1,21 @@
+# Rule-selected 30-stock study (japan_universe.py): Buffett and Graham on
+# J-Quants 決算短信 summaries, anonymized prompt (no ticker, sector, size, or dates). Values in JPY. 200M yen with a 5% cap
+# (10M) buys 100 shares of every selected stock (highest close ~84,560 yen). A bearish view is
+# a simulated short sale, as in the upstream design.
+name: japan-30-anon
+strategies:
+  - name: buffett-graham-anon
+    models:
+      - name: buffett
+        params:
+          anonymize: true
+      - name: graham
+        params:
+          anonymize: true
+risk:
+  max_position_pct: 0.05
+  max_gross_exposure: 1.0
+capital: 200000000
+lot_size: 100
+rebalance: weekly
+benchmark: "1306"

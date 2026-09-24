@@ -48,3 +48,27 @@ def test_positions_returns_a_copy():
     broker.place_order(Order(ticker="AAPL", side="buy", quantity=5, price=100.0))
     broker.positions().clear()
     assert broker.positions()["AAPL"].shares == 5
+
+
+def test_japan_lot_broker_rejects_odd_lots():
+    broker = SimBroker(cash=1_000_000, lot_size=100)
+    with pytest.raises(ValueError, match="multiple of 100 shares"):
+        broker.place_order(Order(ticker="7203", side="buy", quantity=99, price=1_000))
+    broker.place_order(Order(ticker="7203", side="buy", quantity=100, price=1_000))
+    assert broker.positions()["7203"].shares == 100
+
+
+def test_forward_split_multiplies_whole_lots_and_keeps_cash():
+    broker = SimBroker(cash=1_000_000, lot_size=100)
+    broker.place_order(Order(ticker="8001", side="buy", quantity=100, price=5_000))
+    broker.place_order(Order(ticker="7735", side="sell", quantity=100, price=9_000))
+    cash = broker.cash()
+    assert broker.apply_split("8001", 5.0) == 500
+    assert broker.apply_split("7735", 2.0) == -200
+    assert broker.apply_split("7203", 2.0) == 0          # not held: no-op
+    assert broker.cash() == cash
+    with pytest.raises(ValueError, match="not whole 100-share lots"):
+        broker.apply_split("8001", 1.5 / 5)              # 500 -> 150
+    assert broker.apply_split("7735", 1.5) == -300      # 3-for-2 of 200 is whole lots
+    with pytest.raises(ValueError, match="not whole 100-share lots"):
+        broker.apply_split("7735", 0.1)                  # 1-for-10 consolidation: -30

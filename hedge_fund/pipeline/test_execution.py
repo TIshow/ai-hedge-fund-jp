@@ -1,5 +1,7 @@
 """build_orders tests — pure diffing math."""
 
+import pytest
+
 from hedge_fund.brokers.models import Position
 from hedge_fund.pipeline.execution import build_orders
 
@@ -54,3 +56,20 @@ def test_short_target_sells_past_zero():
     assert len(orders) == 1
     assert orders[0].side == "sell"
     assert orders[0].quantity == 20
+
+
+def test_100_share_lots_keep_residual_cash_and_close_entire_lots():
+    orders = build_orders({"7203": 0.4}, {}, {"7203": 3_000},
+                          equity=1_000_000, lot_size=100)
+    assert [(o.side, o.quantity) for o in orders] == [("buy", 100)]
+    assert build_orders({"7203": 0.25}, {}, {"7203": 3_000},
+                        equity=1_000_000, lot_size=100) == []
+    sell = build_orders({}, _positions(**{"7203": 200}), {"7203": 3_000},
+                        equity=1_000_000, lot_size=100)
+    assert [(o.side, o.quantity) for o in sell] == [("sell", 200)]
+
+
+def test_rejects_incompatible_existing_lot():
+    with pytest.raises(ValueError, match="violates 100-share lots"):
+        build_orders({}, _positions(**{"7203": 25}), {"7203": 3_000},
+                     equity=1_000_000, lot_size=100)

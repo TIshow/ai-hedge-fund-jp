@@ -114,6 +114,56 @@ class FundamentalsSnapshot(BaseModel):
             )
         return "\n".join(lines)
 
+    def render_anonymized(self) -> str:
+        """Like `render`, minus what identifies the company or the calendar.
+
+        Withholds ticker, sector, industry, market cap, and period/filing
+        dates (periods become months before the latest one), so a model
+        cannot look the company up in what it memorised. Ratios and
+        per-share figures stay; unusual magnitudes can still hint at an
+        identity, so this reduces lookahead rather than proving its absence.
+        """
+        latest = self.periods[0].report_period if self.periods else None
+        lines = [
+            "Company: [anonymized: name, ticker, sector, size, and dates withheld]",
+            "All figures below were publicly filed before the present. "
+            "Treat the most recent period shown as the present.",
+            "",
+            "Summary:",
+            f"  ROE avg: {_fmt(self.roe_avg)}  |  Net margin avg: {_fmt(self.net_margin_avg)}",
+            f"  Gross margin trend (latest-oldest): {_fmt(self.gross_margin_trend)}",
+            f"  Book value/share CAGR: {_fmt(self.bvps_cagr)}",
+            f"  Debt/equity (latest): {_fmt(self.debt_to_equity_latest)}",
+            "",
+            "History (trailing-twelve-month periods, newest first; "
+            "age in months before the latest period):",
+            "period | P/E | ROE | gross_m | op_m | net_m | D/E "
+            "| curr | rev_gr | EPS | BVPS | FCF/sh",
+        ]
+        for p in self.periods:
+            lines.append(
+                f"{_age(latest, p.report_period)} "
+                f"| {_fmt(p.price_to_earnings_ratio)} | {_fmt(p.return_on_equity)} "
+                f"| {_fmt(p.gross_margin)} | {_fmt(p.operating_margin)} "
+                f"| {_fmt(p.net_margin)} | {_fmt(p.debt_to_equity)} "
+                f"| {_fmt(p.current_ratio)} | {_fmt(p.revenue_growth)} "
+                f"| {_fmt(p.earnings_per_share)} | {_fmt(p.book_value_per_share)} "
+                f"| {_fmt(p.free_cash_flow_per_share)}"
+            )
+        return "\n".join(lines)
+
+
+def _age(latest: str | None, period: str) -> str:
+    """'latest' or '-Nm': whole months between two YYYY-MM-DD period ends."""
+    if latest is None or period == latest:
+        return "latest"
+    try:
+        months = ((int(latest[:4]) - int(period[:4])) * 12
+                  + int(latest[5:7]) - int(period[5:7]))
+    except ValueError:
+        return "?"
+    return f"-{months}m"
+
 
 def build_snapshot(
     ticker: str,

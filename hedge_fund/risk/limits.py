@@ -28,12 +28,16 @@ class RiskLimits(BaseModel):
     max_gross_exposure: float = Field(
         gt=0, description="max sum of |weights| across the book (1.0 = unlevered)"
     )
+    long_only: bool = Field(
+        default=False,
+        description="clamp short (negative) weights to zero — no short sales",
+    )
 
 
 class ClampEvent(BaseModel):
     """One limit firing — recorded so every clamp is explainable."""
 
-    limit: Literal["max_position_pct", "max_gross_exposure"]
+    limit: Literal["max_position_pct", "max_gross_exposure", "long_only"]
     ticker: str | None = None  # None for the portfolio-level gross clamp
     before: float
     after: float
@@ -49,7 +53,9 @@ class RiskResult(BaseModel):
 def apply_limits(weights: dict[str, float], limits: RiskLimits) -> RiskResult:
     """Clamp target weights against the fund's hard limits.
 
-    Order matters and makes the pair idempotent:
+    Order matters and makes the steps idempotent:
+    0. Long-only (when set): a negative weight becomes 0 — the bearish view
+       means "hold none", not a short sale. Freed exposure stays in cash.
     1. Per-ticker cap: any |weight| above max_position_pct is clamped to the
        cap, preserving sign. One ClampEvent per clamped ticker.
     2. Gross cap: if the summed |weights| still exceed max_gross_exposure,
@@ -61,6 +67,9 @@ def apply_limits(weights: dict[str, float], limits: RiskLimits) -> RiskResult:
 
     for ticker in sorted(weights):
         w = weights[ticker]
+        if limits.long_only and w < 0:
+            clamps.append(ClampEvent(limit="long_only", ticker=ticker, before=w, after=0.0))
+            w = 0.0
         cap = limits.max_position_pct
         if abs(w) > cap:
             new_w = cap if w > 0 else -cap

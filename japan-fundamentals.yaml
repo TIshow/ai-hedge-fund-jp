@@ -1,0 +1,17 @@
+# Historical experiment: an LLM investor agent reading J-Quants
+# 決算短信 summaries (TTM, disclosed before each rebalance date). Values in JPY.
+# A bearish view is a simulated short sale, as in the upstream design.
+# Same capital, lots, and limits as japan-pilot.yaml so only the signal differs.
+# Each rebalance calls the LLM once per ticker whose snapshot changed.
+name: japan-fundamentals-pilot
+strategies:
+  - name: buffett-fundamentals
+    models:
+      - name: buffett
+risk:
+  max_position_pct: 0.5
+  max_gross_exposure: 1.0
+capital: 1000000
+lot_size: 100
+rebalance: weekly
+benchmark: "1306"

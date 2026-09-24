@@ -2,6 +2,7 @@
 
 from hedge_fund.data.cached import CachedDataClient
 from hedge_fund.data.client import FDClient, FDClientError
+from hedge_fund.data.jquants import JQuantsDataError, JQuantsPriceClient
 from hedge_fund.data.models import (
     CompanyFacts,
     CompanyNews,
@@ -28,5 +29,7 @@ __all__ = [
     "Filing",
     "FinancialMetrics",
     "InsiderTrade",
+    "JQuantsDataError",
+    "JQuantsPriceClient",
     "Price",
 ]

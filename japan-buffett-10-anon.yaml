@@ -1,0 +1,17 @@
+# Ten-stock comparison: the Buffett agent on J-Quants 決算短信 summaries,
+# anonymized prompt (no ticker, sector, size, or dates). Values in JPY. 10M yen so that a 15% cap (1.5M) buys 100 shares of
+# a stock priced up to 15,000 yen. A bearish view is a simulated short sale.
+name: japan-buffett-10-anon
+strategies:
+  - name: buffett-anon
+    models:
+      - name: buffett
+        params:
+          anonymize: true
+risk:
+  max_position_pct: 0.15
+  max_gross_exposure: 1.0
+capital: 10000000
+lot_size: 100
+rebalance: weekly
+benchmark: "1306"
