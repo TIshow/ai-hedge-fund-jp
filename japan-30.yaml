@@ -1,10 +1,12 @@
 # Rule-selected 30-stock study (japan_universe.py): Buffett and Graham on
 # J-Quants 決算短信 summaries, company identified by ticker and sector. Values in JPY. 200M yen with a 5% cap
-# (10M) buys 100 shares of every selected stock (highest close ~84,560 yen). A bearish view is
-# a simulated short sale, as in the upstream design.
+# (10M) buys 100 shares of every selected stock (highest close ~84,560 yen). Long-only since upstream 2.4
+# (bearish = hold none); the 2026-09 study ran before that, with short sales.
+schema_version: 2
 name: japan-30
 strategies:
   - name: buffett-graham-named
+    blend: {mode: long_only}   # every staffed model is long-only (upstream 2.4)
     models:
       - name: buffett
       - name: graham

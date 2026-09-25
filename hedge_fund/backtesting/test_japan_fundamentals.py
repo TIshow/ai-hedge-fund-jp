@@ -102,14 +102,19 @@ def test_buffett_backtest_on_japanese_summaries(monkeypatch, tmp_path):
     monkeypatch.setattr(sys, "argv", [
         "aihf", str(ROOT / "japan-fundamentals.yaml"), "--data-provider", "jquants",
         "--tickers", "7203", "--backtest", "--start", "2025-01-27",
-        "--date", "2025-02-14", "--out", str(out)])
+        "--date", "2025-02-17", "--out", str(out)])
 
     main()
 
     result = json.loads(out.read_text())
     signals = [s for r in result["records"] for st in r["strategies"] for s in st["signals"]]
+    # Weekly assessments execute at the next session's close (upstream 2.4):
+    # Fri 1/31 -> Mon 2/3, Fri 2/7 -> Mon 2/10, Fri 2/14 -> Mon 2/17; the 2/17
+    # assessment has no later session in the window and stays pending.
     # 3Q is disclosed 2025-02-05: only 3 TTM periods before then, 4 after.
     assert [s["value"] for s in signals] == [0.0, 0.8, 0.8]
+    assert [r["execution_as_of"] for r in result["records"]] == ["2025-02-03", "2025-02-10", "2025-02-17"]
+    assert len(result["pending"]) == 1
     assert "insufficient data" in signals[0]["reasoning"]
     orders = [o for r in result["records"] for o in r["orders"]]
     assert orders and all(o["quantity"] % 100 == 0 for o in orders)

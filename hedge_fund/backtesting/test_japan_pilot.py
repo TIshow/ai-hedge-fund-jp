@@ -24,7 +24,7 @@ class DailyBars:
 
 def prices():
     first = date(2025, 1, 1)
-    weekdays = [(first + timedelta(days=i)).isoformat() for i in range(45)
+    weekdays = [(first + timedelta(days=i)).isoformat() for i in range(60)
                 if (first + timedelta(days=i)).weekday() < 5]
     return weekdays, {
         "7203": {day: 2000 + 10 * i for i, day in enumerate(weekdays)},
@@ -76,13 +76,17 @@ def test_forward_split_doubles_held_shares_and_keeps_nav_continuous(monkeypatch)
         lambda self, ticker, date, data: Signal(model_name="momentum", ticker=ticker,
                                                 date=date, value=1.0, reasoning="long"))
     days, series = prices()
-    ex_date = "2025-02-10"
+    # Bought at the Mon 2/10 close; the 2-for-1 ex-date falls before the next
+    # execution (Mon 2/17), so only the split can change the share count.
+    ex_date = "2025-02-12"
     series["7203"] = {d: (c / 2 if d >= ex_date else c) for d, c in series["7203"].items()}
     data = SplittingBars(series, [("7203", ex_date, 2.0)])
-    result = backtest_fund(Fund(load_spec("japan-pilot.yaml")), "2025-02-03", "2025-02-14",
+    result = backtest_fund(Fund(load_spec("japan-pilot.yaml")), "2025-02-03", "2025-02-21",
                            data, ["7203"])
-    before, after = result.records[0], result.records[1]
-    held = before.positions["7203"]
-    assert held > 0 and after.positions["7203"] == 2 * held
-    # Without the split the book would lose half the position's value.
-    assert after.nav > before.nav * 0.9
+    first, second = result.records[0], result.records[1]
+    held = first.positions["7203"]
+    assert first.execution_as_of == "2025-02-10" and held > 0
+    assert abs(second.positions["7203"] - 2 * held) <= 100   # split, then at most one lot of rebalance
+    i = result.dates.index(ex_date)
+    # Without the split the book would lose about half the position's value.
+    assert result.nav[i] > result.nav[i - 1] * 0.9

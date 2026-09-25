@@ -1,11 +1,14 @@
 # Historical experiment: an LLM investor agent reading J-Quants
 # 決算短信 summaries (TTM, disclosed before each rebalance date). Values in JPY.
-# A bearish view is a simulated short sale, as in the upstream design.
+# Since upstream 2.4 a bearish view means hold none (long-only models); the
+# 2026-09 study ran before that, when bearish views were short sales.
 # Same capital, lots, and limits as japan-pilot.yaml so only the signal differs.
 # Each rebalance calls the LLM once per ticker whose snapshot changed.
+schema_version: 2
 name: japan-fundamentals-pilot
 strategies:
   - name: buffett-fundamentals
+    blend: {mode: long_only}   # every staffed model is long-only (upstream 2.4)
     models:
       - name: buffett
 risk:
