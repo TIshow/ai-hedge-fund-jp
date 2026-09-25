@@ -1,8 +1,10 @@
 # Historical, long-only plumbing experiment. Values are in JPY.
 # 1306 is a listed TOPIX ETF used as a price-only comparison, not TOPIX itself.
+schema_version: 2
 name: japan-price-pilot
 strategies:
   - name: prior-close-momentum
+    blend: {mode: long_only}   # every staffed model is long-only (upstream 2.4)
     models:
       - name: momentum
 risk:

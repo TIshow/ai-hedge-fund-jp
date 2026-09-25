@@ -49,7 +49,7 @@ def test_mandate_param_turns_on_anonymized_prompts(monkeypatch, tmp_path):
     monkeypatch.setattr("hedge_fund.signals.llm_agent.make_llm", lambda: llm)
     monkeypatch.setattr("hedge_fund.signals.llm_agent.PromptCache",
                         lambda: PromptCache(tmp_path))
-    spec = FundSpec(name="anon", strategies=[{"name": "s", "models": [
+    spec = FundSpec(schema_version=2, name="anon", strategies=[{"name": "s", "blend": {"mode": "long_only"}, "models": [
         {"name": "buffett", "params": {"anonymize": True}}]}],
         risk={"max_position_pct": 0.5, "max_gross_exposure": 1.0})
     agent = Fund(spec).strategies[0][1][0]

@@ -80,13 +80,16 @@ def run() -> None:
 
     result = json.loads(OUTPUT.read_text())
     records = result["records"]
-    assert len(records) == 3, "Expected three Friday rebalance cycles"
+    # Friday assessments execute at the next session's close (upstream 2.4):
+    # 2/7 -> 2/10 and 2/14 -> 2/17; the 2/21 assessment stays pending.
+    assert len(records) == 2, "Expected two executed weekly cycles"
+    assert len(result["pending"]) == 1, "Expected the last assessment to be pending"
     assert result["metrics"]["n_orders"] > 0, "Expected at least one order"
     assert all(o["quantity"] % 100 == 0 for r in records for o in r["orders"])
     assert all("6758" not in r["positions"] for r in records)
     # Adjusted benchmark closes keep the comparison continuous over the split.
     assert 0 < result["metrics"]["benchmark_return_pct"] < 0.05
-    print(f"Synthetic smoke run passed: {len(records)} cycles, "
+    print(f"Synthetic smoke run passed: {len(records)} executed cycles, "
           f"{result['metrics']['n_orders']} order(s), "
           f"end NAV {result['nav'][-1]:,.0f} JPY; output: {OUTPUT}",
           file=sys.stderr)

@@ -216,3 +216,20 @@ def test_valuation_prices_fall_back_to_plan_coverage():
     metrics = data.get_financial_metrics("7203", "2024-12-01")
     assert metrics[0].price_to_earnings_ratio == 20
     assert session.calls[2][1]["params"]["from"] == "2024-07-02"
+
+
+def test_market_timezone_moves_the_completed_session_cutoff(monkeypatch):
+    from datetime import datetime, timezone
+
+    from hedge_fund.data import sessions
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):  # 2026-09-25 23:30 UTC = 09-26 08:30 Tokyo = 09-25 19:30 New York
+            return datetime(2026, 9, 25, 23, 30, tzinfo=timezone.utc).astimezone(tz)
+
+    monkeypatch.setattr(sessions, "datetime", Clock)
+    monkeypatch.delenv("HEDGE_FUND_MARKET_TZ", raising=False)
+    assert sessions.completed_through() == "2026-09-24"
+    monkeypatch.setenv("HEDGE_FUND_MARKET_TZ", "Asia/Tokyo")
+    assert sessions.completed_through() == "2026-09-25"

@@ -16,6 +16,8 @@ Today's close is never used to decide a trade simulated at today's close.
 This is a plumbing baseline, not a claim of predictive power.
     """
 
+    investment_approach = "long_only"  # views are 1 (hold) or 0, never short
+
     @property
     def name(self) -> str:
         return "momentum"
