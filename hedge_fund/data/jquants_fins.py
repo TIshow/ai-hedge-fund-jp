@@ -15,7 +15,9 @@ the same cumulative period year over year (前年同期比), which equals TTM
 growth for full-year rows. TTM EPS is TTM net income over the latest
 average share count, so a stock split inside the window does not mix bases.
 The summary has no gross profit, debt, or current assets, so gross margin,
-debt/equity, and current ratio stay null.
+debt/equity, and current ratio stay null. Total liabilities / equity
+(total assets minus net assets, over shareholders' equity) is reported
+instead of a debt ratio: it counts all liabilities, not only borrowings.
 
 Known limit: summaries are as originally reported. When a company restates
 prior periods (e.g. a spin-off moved to discontinued operations), TTM and
@@ -153,6 +155,16 @@ def _book(row: dict) -> tuple[float | None, float | None, float | None]:
     return equity, shares, bps
 
 
+def _liabilities_to_equity(row: dict, equity: float | None) -> float | None:
+    """(total assets - net assets) / shareholders' equity. Net assets include
+    non-controlling interests, so the numerator is total liabilities."""
+    assets, net_assets = _num(row, "TA"), _num(row, "Eq")
+    if assets is None or net_assets is None or not equity or equity <= 0:
+        return None
+    liabilities = assets - net_assets
+    return liabilities / equity if liabilities >= 0 else None
+
+
 def to_metrics(
     ticker: str,
     rows: list[dict],
@@ -204,6 +216,7 @@ def to_metrics(
             net_margin=_div(np_, sales),
             return_on_equity=_div(np_, equity) if equity and equity > 0 else None,
             return_on_assets=_div(np_, assets),
+            liabilities_to_equity=_liabilities_to_equity(row, equity),
             asset_turnover=_div(sales, assets),
             revenue_growth=_yoy(row, by_period, "Sales"),
             earnings_growth=_yoy(row, by_period, "NP"),

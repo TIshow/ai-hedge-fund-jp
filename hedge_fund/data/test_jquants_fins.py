@@ -100,3 +100,13 @@ def test_ttm_eps_stays_on_current_share_basis_across_a_split():
     assert q1.earnings_per_share == pytest.approx(200 / 500)   # not 0.1 + 0.4 - 0.5
     assert q1.earnings_per_share_growth is None
     assert q1.earnings_growth == pytest.approx(0.0)            # net income 50 vs 50
+
+
+def test_total_liabilities_over_equity_from_the_summary():
+    rows = [summary("FY", "2024-04-01", "2025-03-31", "2025-05-08",
+                    sales=400, op=40, np_=20, eps=20, TA=1000, Eq=400, ShEq=350)]
+    fy = to_metrics("7203", rows, PRICES, "2025-06-01")[0]
+    assert fy.liabilities_to_equity == pytest.approx((1000 - 400) / 350)
+    assert fy.debt_to_equity is None                    # not a borrowings ratio
+    no_net_assets = [dict(rows[0], Eq="")]
+    assert to_metrics("7203", no_net_assets, PRICES, "2025-06-01")[0].liabilities_to_equity is None

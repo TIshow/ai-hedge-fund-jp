@@ -88,6 +88,10 @@ class FinancialMetrics(BaseModel):
     # Leverage
     debt_to_equity: float | None = None
     debt_to_assets: float | None = None
+    # Total liabilities (incl. non-interest-bearing) / shareholders' equity.
+    # Not debt_to_equity: providers without a debt breakdown (J-Quants
+    # summaries) can still report it.
+    liabilities_to_equity: float | None = None
     interest_coverage: float | None = None
 
     # Growth
