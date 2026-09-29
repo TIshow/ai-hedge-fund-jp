@@ -56,3 +56,23 @@ def test_mandate_param_turns_on_anonymized_prompts(monkeypatch, tmp_path):
     signal = agent.predict("7203", "2026-06-26", Data())
     assert "7203" not in llm.users[0] and "自動車" not in llm.users[0]
     assert signal.metadata["anonymized"] is True
+
+
+def test_liabilities_column_appears_only_when_supplied():
+    snap = build_snapshot("7203", "2026-06-26", Data())
+    before_named, before_anon = snap.render(), snap.render_anonymized()
+    assert "liab/E" not in before_named and "liab/E" not in before_anon
+
+    for p in snap.periods:
+        p.liabilities_to_equity = 1.5
+    snap.liabilities_to_equity_latest = 1.5
+    named, anon = snap.render(), snap.render_anonymized()
+    for text in (named, anon):
+        assert "| D/E | liab/E | curr |" in text
+        assert "Total liabilities/equity (latest): 1.50" in text
+        assert "not only interest-bearing debt" in text
+    # Removing the new column and line gives back the original prompt exactly.
+    strip = lambda t: "\n".join(  # noqa: E731
+        line.replace(" | 1.50 ", " ").replace("| liab/E ", "")
+        for line in t.splitlines() if "Total liabilities/equity" not in line)
+    assert strip(named) == before_named and strip(anon) == before_anon

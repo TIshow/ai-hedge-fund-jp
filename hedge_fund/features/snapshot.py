@@ -42,6 +42,7 @@ class PeriodFundamentals(BaseModel):
     operating_margin: float | None = None
     net_margin: float | None = None
     debt_to_equity: float | None = None
+    liabilities_to_equity: float | None = None
     current_ratio: float | None = None
     revenue_growth: float | None = None
     earnings_per_share: float | None = None
@@ -64,6 +65,7 @@ class FundamentalsSnapshot(BaseModel):
     gross_margin_trend: float | None = None  # latest minus oldest
     bvps_cagr: float | None = None
     debt_to_equity_latest: float | None = None
+    liabilities_to_equity_latest: float | None = None
     market_cap_latest: float | None = None
 
     @property
@@ -75,6 +77,18 @@ class FundamentalsSnapshot(BaseModel):
         """
         canonical = self.model_dump_json(exclude={"as_of"})
         return hashlib.sha256(canonical.encode()).hexdigest()[:24]
+
+    @property
+    def _has_liabilities(self) -> bool:
+        """Show total liabilities/equity only when a provider supplies it, so
+        prompts built from other providers stay byte-for-byte unchanged."""
+        return any(p.liabilities_to_equity is not None for p in self.periods)
+
+    def _liabilities_summary(self) -> list[str]:
+        if not self._has_liabilities:
+            return []
+        return [f"  Total liabilities/equity (latest): {_fmt(self.liabilities_to_equity_latest)}"
+                "  (all liabilities incl. payables, not only interest-bearing debt)"]
 
     def render(self) -> str:
         """Compact text block for the LLM prompt.
@@ -97,10 +111,12 @@ class FundamentalsSnapshot(BaseModel):
             f"  Gross margin trend (latest-oldest): {_fmt(self.gross_margin_trend)}",
             f"  Book value/share CAGR: {_fmt(self.bvps_cagr)}",
             f"  Debt/equity (latest): {_fmt(self.debt_to_equity_latest)}",
+            *self._liabilities_summary(),
             "",
             "History (trailing-twelve-month periods, newest first):",
             "period | filed | mktcap | P/E | ROE | gross_m | op_m | net_m | D/E "
-            "| curr | rev_gr | EPS | BVPS | FCF/sh",
+            + ("| liab/E " if self._has_liabilities else "")
+            + "| curr | rev_gr | EPS | BVPS | FCF/sh",
         ]
         for p in self.periods:
             lines.append(
@@ -108,7 +124,8 @@ class FundamentalsSnapshot(BaseModel):
                 f"| {_fmt(p.price_to_earnings_ratio)} | {_fmt(p.return_on_equity)} "
                 f"| {_fmt(p.gross_margin)} | {_fmt(p.operating_margin)} "
                 f"| {_fmt(p.net_margin)} | {_fmt(p.debt_to_equity)} "
-                f"| {_fmt(p.current_ratio)} | {_fmt(p.revenue_growth)} "
+                + (f"| {_fmt(p.liabilities_to_equity)} " if self._has_liabilities else "")
+                + f"| {_fmt(p.current_ratio)} | {_fmt(p.revenue_growth)} "
                 f"| {_fmt(p.earnings_per_share)} | {_fmt(p.book_value_per_share)} "
                 f"| {_fmt(p.free_cash_flow_per_share)}"
             )
@@ -134,11 +151,13 @@ class FundamentalsSnapshot(BaseModel):
             f"  Gross margin trend (latest-oldest): {_fmt(self.gross_margin_trend)}",
             f"  Book value/share CAGR: {_fmt(self.bvps_cagr)}",
             f"  Debt/equity (latest): {_fmt(self.debt_to_equity_latest)}",
+            *self._liabilities_summary(),
             "",
             "History (trailing-twelve-month periods, newest first; "
             "age in months before the latest period):",
             "period | P/E | ROE | gross_m | op_m | net_m | D/E "
-            "| curr | rev_gr | EPS | BVPS | FCF/sh",
+            + ("| liab/E " if self._has_liabilities else "")
+            + "| curr | rev_gr | EPS | BVPS | FCF/sh",
         ]
         for p in self.periods:
             lines.append(
@@ -146,7 +165,8 @@ class FundamentalsSnapshot(BaseModel):
                 f"| {_fmt(p.price_to_earnings_ratio)} | {_fmt(p.return_on_equity)} "
                 f"| {_fmt(p.gross_margin)} | {_fmt(p.operating_margin)} "
                 f"| {_fmt(p.net_margin)} | {_fmt(p.debt_to_equity)} "
-                f"| {_fmt(p.current_ratio)} | {_fmt(p.revenue_growth)} "
+                + (f"| {_fmt(p.liabilities_to_equity)} " if self._has_liabilities else "")
+                + f"| {_fmt(p.current_ratio)} | {_fmt(p.revenue_growth)} "
                 f"| {_fmt(p.earnings_per_share)} | {_fmt(p.book_value_per_share)} "
                 f"| {_fmt(p.free_cash_flow_per_share)}"
             )
@@ -209,6 +229,7 @@ def build_snapshot(
         gross_margin_trend=_trend([m.gross_margin for m in metrics]),
         bvps_cagr=_cagr([m.book_value_per_share for m in metrics]),
         debt_to_equity_latest=metrics[0].debt_to_equity,
+        liabilities_to_equity_latest=metrics[0].liabilities_to_equity,
         market_cap_latest=metrics[0].market_cap,
     )
 
